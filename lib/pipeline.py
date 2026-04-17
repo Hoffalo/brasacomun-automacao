@@ -20,12 +20,12 @@ COMMENT_MARKER = "🤖 BRIEFING AUTOMÁTICO"
 
 
 def run_pipeline(task_id: str, force: bool = False):
-    """Entry point síncrono chamado pela thread do webhook."""
+    """Entry point síncrono chamado pelo webhook (sync) ou CLI."""
     try:
         asyncio.run(_pipeline(task_id, force=force))
     except Exception as e:
-        print(f"[pipeline] Erro na task {task_id}: {e}")
-        traceback.print_exc()
+        print(f"[pipeline] Erro na task {task_id}: {type(e).__name__}: {e}")
+        print(f"[pipeline] Traceback: {traceback.format_exc()}")
 
 
 async def _pipeline(task_id: str, force: bool = False):

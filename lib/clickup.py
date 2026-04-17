@@ -19,6 +19,7 @@ async def get_task_rich(task_id: str) -> dict | None:
     Busca a task com markdown_description=true para preservar links embutidos.
     Isso é essencial para extrair links do Canva da descrição.
     """
+    import traceback
     url = f"{CLICKUP_API_BASE}/task/{task_id}"
     params = {
         "include_markdown_description": "true",
@@ -28,11 +29,13 @@ async def get_task_rich(task_id: str) -> dict | None:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, params=params, headers=_headers()) as resp:
                 if resp.status != 200:
-                    print(f"[clickup] Erro ao buscar task {task_id}: {resp.status}")
+                    body = await resp.text()
+                    print(f"[clickup] Erro ao buscar task {task_id}: {resp.status} — {body[:200]}")
                     return None
                 return await resp.json()
     except Exception as e:
-        print(f"[clickup] Exceção ao buscar task {task_id}: {e}")
+        print(f"[clickup] Exceção ao buscar task {task_id}: {type(e).__name__}: {e}")
+        print(f"[clickup] Traceback: {traceback.format_exc()}")
         return None
 
 
