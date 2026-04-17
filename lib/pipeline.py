@@ -17,6 +17,7 @@ from lib.alerts import build_alerts
 COMUN_SPACE_ID = "90111669766"
 BRIEFING_MARKER = "<!-- briefing-gerado -->"
 COMMENT_MARKER = "🤖 BRIEFING AUTOMÁTICO"
+FALLBACK_PREFIX = "⚠ Não foi possível gerar"
 
 
 def run_pipeline(task_id: str, force: bool = False):
@@ -106,13 +107,18 @@ async def _pipeline(task_id: str, force: bool = False):
     )
 
     # ── ETAPA 5: Output na descrição da task ──────────────────────────────
+    is_fallback = (briefing or "").lstrip().startswith(FALLBACK_PREFIX)
     new_desc = _build_output(
         existing_desc=desc,
         alerts=alerts,
         briefing=briefing,
+        include_marker=not is_fallback,
     )
     await update_task_description(task_id, new_desc)
-    print(f"[pipeline] Briefing gerado com sucesso para task {task_id}")
+    if is_fallback:
+        print(f"[pipeline] Fallback escrito — próximo trigger fará retry (sem marcador)")
+    else:
+        print(f"[pipeline] Briefing gerado com sucesso para task {task_id}")
 
 
 def _get_paleta(tags: list, list_name: str) -> str:
@@ -170,8 +176,14 @@ async def _get_related_tasks(tags: list, current_task_id: str) -> str:
         return ""
 
 
-def _build_output(existing_desc: str, alerts: list, briefing: str) -> str:
-    """Monta a descrição final com alertas + conteúdo original + briefing."""
+def _build_output(
+    existing_desc: str, alerts: list, briefing: str, include_marker: bool = True
+) -> str:
+    """Monta a descrição final com alertas + conteúdo original + briefing.
+
+    include_marker=False quando o briefing é fallback de erro, pra permitir
+    retry automático na próxima mudança de status.
+    """
     parts = []
 
     if alerts:
@@ -181,7 +193,9 @@ def _build_output(existing_desc: str, alerts: list, briefing: str) -> str:
             parts.append(alert)
         parts.append("")
 
-    original = (existing_desc or "").strip()
+    # Preserva conteúdo original MAS remove briefings gerados anteriores
+    # (impede acúmulo quando retries acontecem).
+    original = _strip_prior_briefing(existing_desc or "").strip()
     if original:
         parts.append(original)
         parts.append("")
@@ -191,7 +205,27 @@ def _build_output(existing_desc: str, alerts: list, briefing: str) -> str:
     parts.append("─" * 40)
     parts.append(briefing)
 
-    parts.append("")
-    parts.append(BRIEFING_MARKER)
+    if include_marker:
+        parts.append("")
+        parts.append(BRIEFING_MARKER)
 
     return "\n".join(parts)
+
+
+def _strip_prior_briefing(desc: str) -> str:
+    """Remove a seção 'BRIEFING GERADO AUTOMATICAMENTE' e qualquer marcador
+    de uma descrição anterior, pra evitar empilhar briefings a cada retry."""
+    if not desc:
+        return desc
+    markers = [
+        "⚠️ ALERTAS AUTOMÁTICOS",
+        "─" * 40 + "\nBRIEFING GERADO AUTOMATICAMENTE",
+        "BRIEFING GERADO AUTOMATICAMENTE",
+    ]
+    for m in markers:
+        idx = desc.find(m)
+        if idx != -1:
+            desc = desc[:idx]
+    # Remove marcador HTML oculto se estiver solto
+    desc = desc.replace(BRIEFING_MARKER, "")
+    return desc
