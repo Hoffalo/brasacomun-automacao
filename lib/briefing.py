@@ -47,6 +47,53 @@ REGRAS ABSOLUTAS:
 - Use linguagem coloquial brasileira, não corporativa
 - Máx 3-4 palavras em Hagrid Extrabold (títulos de impacto sem a palavra "BRASA")
 - Lato para todo o resto
+
+ID VISUAL BRASA — REGRAS INEGOCIÁVEIS (Manual de ID Visual):
+
+CORES:
+- Em Orientação Design, use EXCLUSIVAMENTE as cores listadas em "PALETA DE CORES
+  A USAR" do user prompt. Nomeie cada cor com seu hex code exato.
+- NUNCA invente cores, sugira gradientes aleatórios, ou copie cores da imagem
+  Canva anexa — ela é referência de CONTEÚDO, não de cor.
+- Se precisar de neutros, use Noite Urbana #252726 (fundo claro) ou
+  Luz da BRASA #F4F4F4 (fundo escuro).
+
+TIPOGRAFIA:
+- Lato é a fonte oficial. Todo texto que contém a palavra "BRASA" é em Lato.
+- Hagrid Extrabold só em títulos de impacto (máx 3-4 palavras), nunca com "BRASA".
+- Não sugira outras fontes.
+
+LOGO:
+- Fundo claro → versão oficial Noite Urbana #252726
+- Fundo escuro → versão auxiliar Luz da BRASA #F4F4F4
+- Fundo colorido/foto → versão monocromática branca
+- Sempre mencione explicitamente qual versão da logo usar.
+
+SE HOUVER IMAGEM ANEXA (slide Canva de referência):
+- Extraia CONTEÚDO: título, subtítulos, texto visível, elementos gráficos,
+  tema geral. Use isso em Legenda, Orientação Design (layout/estrutura) e
+  Foco Emocional.
+- NÃO extraia cores ou fontes da imagem. O Canva de referência pode ter
+  sido feito antes da padronização — siga sempre a paleta do prompt.
+
+FILTRO DE PÚBLICO — QUAL INFO VAI NA LEGENDA/POST:
+O slide Canva geralmente é apresentado internamente (ex: reuniões de board,
+onboarding de time). Muitas frases ali são INTERNAS e NÃO devem aparecer no
+post público do Instagram/LinkedIn. Antes de usar qualquer trecho, pergunte:
+"isso faria sentido pra um seguidor do @gobrasa que nunca foi na BRASA?"
+
+NÃO INCLUA na Legenda nem em outros campos voltados ao público externo:
+- Curiosidades, piadas internas, menções ao board ou diretoria
+- Disclaimers operacionais ("isso ainda não é público", "não divulgar", etc.)
+- Notas de rodapé dirigidas à equipe ou stakeholders internos
+- Nomes de pessoas internas sem contexto público
+- Dados sensíveis de orçamento, número de membros, metas internas
+- Qualquer coisa que pareça "à parte" ou fora do fluxo narrativo principal
+
+INCLUA só:
+- Mensagem principal do slide dirigida ao público externo
+- Títulos, CTAs e informações factuais do evento/campanha/tema
+- Dados públicos já divulgados ou claramente pensados pra divulgação
 """
 
 
@@ -61,7 +108,7 @@ async def generate_briefing(
     existing_desc: str,
     slack_ctx: str,
     drive_ctx: str,
-    canva_ctx: str,
+    canva_ctx,  # dict { text, image_base64, image_media_type } ou str (retrocompat)
     related_tasks: str,
     paleta: str,
     alerts: list,
@@ -74,6 +121,17 @@ async def generate_briefing(
     ) or "  (não identificados)"
 
     alerts_str = "\n".join(f"  - {a}" for a in alerts) if alerts else "  Nenhum"
+
+    # Normaliza canva_ctx: aceita str (legado) ou dict { text, image_base64, ... }
+    canva_text = ""
+    canva_image_b64 = None
+    canva_image_mime = "image/png"
+    if isinstance(canva_ctx, dict):
+        canva_text = canva_ctx.get("text", "") or ""
+        canva_image_b64 = canva_ctx.get("image_base64")
+        canva_image_mime = canva_ctx.get("image_media_type", "image/png")
+    elif isinstance(canva_ctx, str):
+        canva_text = canva_ctx
 
     user_prompt = f"""TASK:
 - Nome: {task_name}
@@ -91,6 +149,7 @@ DESCRIÇÃO EXISTENTE (preservar integralmente):
 
 PALETA DE CORES A USAR (Manual de ID Visual BRASA — seção 1.3):
 {paleta}
+(Use EXCLUSIVAMENTE essas cores na Orientação Design. Cite os hex codes.)
 
 CONTEXTO DO SLACK (últimas mensagens relevantes):
 {slack_ctx or '(nenhum encontrado)'}
@@ -99,7 +158,7 @@ CONTEXTO DO GOOGLE DRIVE (documentos relacionados):
 {drive_ctx or '(nenhum encontrado)'}
 
 CONTEXTO DO CANVA (conteúdo do slide referenciado):
-{canva_ctx or '(nenhum encontrado)'}
+{canva_text or '(nenhum encontrado)'}
 
 TASKS RELACIONADAS (mesmas tags, últimos 3 meses):
 {related_tasks or '(nenhuma)'}
@@ -115,11 +174,24 @@ Os demais campos são direcionamentos + perguntas norteadoras."""
             "anthropic-version": "2023-06-01",
             "content-type": "application/json",
         }
+        # Constrói mensagem: se tiver imagem do Canva, anexa como bloco Vision
+        message_content: list = []
+        if canva_image_b64:
+            message_content.append({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": canva_image_mime,
+                    "data": canva_image_b64,
+                },
+            })
+        message_content.append({"type": "text", "text": user_prompt})
+
         payload = {
             "model": MODEL,
             "max_tokens": MAX_TOKENS,
             "system": SYSTEM_PROMPT,
-            "messages": [{"role": "user", "content": user_prompt}],
+            "messages": [{"role": "user", "content": message_content}],
         }
 
         async with aiohttp.ClientSession() as session:

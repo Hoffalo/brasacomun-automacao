@@ -41,23 +41,44 @@ brasa-briefing-bot/
 │                             retornar 0 resultados, cai em OAuth refresh token
 │                             (conta pessoal BRASA) como fallback. Inclui
 │                             includeItemsFromAllDrives pra buscar em Shared Drives.
-│   ├── canva_client.py     ← Extrai design_id de URL Canva no markdown_description
-│                             e lê o conteúdo do slide referenciado.
-│   ├── briefing.py         ← Chama Claude API com prompt completo.
+│   ├── canva_client.py     ← Extrai design_id + nº de slide do markdown_description.
+│                             Usa Canva OAuth (CLIENT_ID/SECRET/REFRESH_TOKEN) —
+│                             Canva rotaciona o refresh token a cada uso, o código
+│                             persiste o novo em secrets/.env.local automaticamente.
+│                             Faz POST /exports pra PNG alta-res da página pedida
+│                             (job assíncrono com polling), baixa e retorna
+│                             {text, image_base64, image_media_type} pra Vision.
+│                             Fallback pra thumbnail 596x335 se export falhar.
+│   ├── briefing.py         ← Chama Claude API (Sonnet 4.5) com prompt completo.
+│                             Se canva_ctx tem image_base64, anexa como bloco
+│                             Vision na mensagem (Claude "vê" o slide).
 │                             Legenda + Orientação Design: rascunho pronto.
 │                             Outros campos: direcionamentos + perguntas norteadoras.
+│                             System prompt aplica ID visual BRASA (cores/fontes)
+│                             e filtro de público (remove conteúdo interno/board).
 │   ├── editorial.py        ← Linha editorial, prefixos, paletas por produto
 │                             (Manual de ID Visual BRASA, seção 1.3).
 │   └── alerts.py           ← Gera alertas automáticos (data, tags, campos).
 ├── scripts/
-│   └── get_refresh_token.py ← Script local one-shot. Abre browser, usuário
-│                              loga com conta BRASA, imprime refresh_token
-│                              pra colar no Vercel como GOOGLE_OAUTH_REFRESH_TOKEN.
-├── secrets/                ← Pasta local ignorada pelo git (chaves SA, OAuth JSON).
-├── requirements.txt        ← aiohttp, anthropic, cryptography
-├── vercel.json             ← maxDuration: 60s (runtime auto-detectado)
+│   ├── load_env.ps1        ← PowerShell. Lê secrets/.env.local + Service Account
+│                              JSON e exporta tudo como env vars na sessão atual.
+│                              Rodar com `. .\scripts\load_env.ps1` (dot-source).
+│   ├── get_refresh_token.py ← One-shot Google OAuth. Abre browser, usuário
+│                              loga com conta BRASA, imprime GOOGLE_OAUTH_REFRESH_TOKEN.
+│   ├── get_canva_token.py  ← One-shot Canva OAuth (PKCE + localhost callback).
+│                              Imprime CANVA_REFRESH_TOKEN.
+│   └── probe_canva.py      ← Diagnóstico da Canva Connect API — testa
+│                              /designs/{id}, /pages, /designs?limit.
+├── secrets/                ← Pasta local ignorada pelo git.
+│   ├── .env.local          ← KEY=VALUE com tokens (fonte-da-verdade em dev;
+│                              canva_client atualiza in-place quando o Canva
+│                              rotaciona o refresh token).
+│   └── *service*.json      ← Service Account JSON (Google).
+├── .env.local.example      ← Template vazio do .env.local (commitado).
+├── requirements.txt        ← aiohttp>=3.10, anthropic>=0.40, cryptography>=42.
+├── vercel.json             ← maxDuration: 60s (runtime auto-detectado).
 ├── runtime.txt             ← python-3.12
-├── .gitignore              ← Ignora secrets/, .env, .vercel/, __pycache__/, etc.
+├── .gitignore              ← secrets/, .env, *-service-account*.json, etc.
 └── README.md               ← Instruções de setup
 ```
 
@@ -104,13 +125,24 @@ GOOGLE_OAUTH_CLIENT_ID        # OAuth Client ID (Desktop app) — fallback
 GOOGLE_OAUTH_CLIENT_SECRET    # OAuth Client Secret                — fallback
 GOOGLE_OAUTH_REFRESH_TOKEN    # Gerado por scripts/get_refresh_token.py — fallback
 ANTHROPIC_API_KEY             # sk-ant-...
-CANVA_API_TOKEN               # Token da integração Canva
+CANVA_CLIENT_ID               # OAuth Client ID (Canva Connect API)
+CANVA_CLIENT_SECRET           # OAuth Client Secret
+CANVA_REFRESH_TOKEN           # Gerado por scripts/get_canva_token.py
+CANVA_API_TOKEN               # (legado) Bearer estático — só usado se definido
 ```
 
 As três envs `GOOGLE_OAUTH_*` são opcionais. Se as três estiverem preenchidas,
 o bot usa o token OAuth como fallback quando a Service Account não consegue
 autenticar ou retorna 0 resultados (típico quando a SA não foi adicionada
 como membro das Shared Drives da BRASA).
+
+**Canva — rotação de refresh token:** a API Canva invalida o refresh token a
+cada uso. O `canva_client._get_access_token` lê sempre do `secrets/.env.local`
+(se existir) pra pegar o token mais recente, e o `_persist_new_refresh_token`
+atualiza o arquivo quando a resposta do refresh retorna um novo. Em produção
+(Vercel, sem `.env.local`), o novo token fica só em `os.environ` — válido
+dentro da mesma invocação; chamadas concorrentes podem bater na rotação e
+falhar. Pra alto volume, considerar Upstash Redis ou equivalente.
 
 ---
 
@@ -138,11 +170,16 @@ como membro das Shared Drives da BRASA).
    ETAPA 3 — Coleta de contexto (asyncio.gather — paralelo)
    → search_slack(tags, name) → mensagens nos canais autorizados
    → search_drive(tags, name) → documentos relevantes no Drive
-   → get_canva_context(markdown_desc) → lê slide referenciado
+   → get_canva_context(markdown_desc) → exporta slide em PNG e retorna
+       {text, image_base64, image_media_type} pro Vision
    → _get_related_tasks(tags, task_id) → tasks com mesmas tags
 
    ETAPA 4 — Geração via Claude API
    → claude-sonnet-4-5, max_tokens=1800
+   → Se houver image_base64, anexa como bloco Vision (content: [image, text])
+   → System prompt aplica ID visual BRASA (cores da paleta do produto,
+     tipografia Lato/Hagrid) e filtro de público (remove conteúdo interno,
+     disclaimers, menções a board, dados sensíveis)
    → Legenda: rascunho pronto para revisão
    → Orientação Design: rascunho com paleta, tipografia, versão da logo
    → Orientação MKT: direcionamentos + perguntas norteadoras
@@ -278,9 +315,12 @@ Tasks             (901109622288) — tasks gerais sem lista específica
 | Slack: só vê canais do usuário autenticado | `SLACK_TOKEN` = token pessoal | Bot dedicado (`xoxb-`) com `channels:history` em todos os canais Comun |
 | ClickUp MCP não retorna rich text | Pipeline usa REST API direta com `include_markdown_description=true` | — (já resolvido) |
 | Canva: links só visíveis no rich text | `canva_client.py` extrai via regex do `markdown_description` | Campo "Arte" (URL) nas listas para alternativa estruturada |
+| Canva: refresh token rotaciona a cada uso | Em dev, salva novo em `secrets/.env.local`. Em produção, só em `os.environ` da invocação | Upstash Redis ou Vercel KV pra persistir entre invocações |
+| Canva: endpoint `/content` não existe na Connect API | Usa `/exports` (job assíncrono de PNG) + Vision pra "ler" o slide | — (já resolvido) |
 | Drive: SA não tem acesso às Shared Drives da BRASA (só Manager adiciona membro) | Fallback OAuth: bot autentica como usuário BRASA via refresh token | Pedir pra COO/Dir Tech adicionar SA como Viewer nas Shared Drives relevantes |
 | Drive: Slides/Sheets não são legíveis diretamente | Loga como "○" no contexto | Exportar como texto via Drive export endpoint |
-| Timeout Vercel: 60s plano gratuito | Pipeline paralela (~15-20s no total) | Migrar para AWS Lambda (15min) se necessário |
+| Vercel Hobby: timeout de 10s mata a pipeline | Plano Hobby não suporta briefing completo (~15-20s) | Upgrade Pro ($20/mês, 60s) OU migrar pra Cloud Run/Railway |
+| Vercel: thread daemon morre quando handler retorna 200 | Em Vercel Serverless, background thread é terminada ao fim da invocação | Fazer handler síncrono (aguardar pipeline) com Pro plan, ou usar fila externa |
 
 ---
 
@@ -310,14 +350,29 @@ export GOOGLE_OAUTH_CLIENT_ID="..."
 export GOOGLE_OAUTH_CLIENT_SECRET="..."
 export GOOGLE_OAUTH_REFRESH_TOKEN="..."  # gerado por scripts/get_refresh_token.py
 export ANTHROPIC_API_KEY="sk-ant-..."
-export CANVA_API_TOKEN="..."
+export CANVA_CLIENT_ID="..."
+export CANVA_CLIENT_SECRET="..."
+export CANVA_REFRESH_TOKEN="..."  # gerado por scripts/get_canva_token.py
 
 # Rodar pipeline diretamente (sem webhook)
 python3 -c "
 from lib.pipeline import run_pipeline
-run_pipeline('868j9tryh')  # ID de uma task real para teste
+run_pipeline('868j9tryh')                  # respeitando anti-duplicata
+run_pipeline('868j9tryh', force=True)      # força, ignora marcador <!-- briefing-gerado -->
 "
 ```
+
+**No Windows / PowerShell**, use o helper:
+```powershell
+# cada sessão nova
+. .\scripts\load_env.ps1
+python -c "from lib.pipeline import run_pipeline; run_pipeline('868j9tryh', force=True)"
+```
+
+O `load_env.ps1` lê `secrets/.env.local` (KEY=VALUE uma linha por var) e
+também carrega o Service Account JSON direto do disco. Canva rotaciona o
+refresh token a cada uso, então o `canva_client` atualiza o `.env.local`
+in-place — a próxima chamada na mesma sessão não precisa de reload.
 
 ---
 
@@ -360,6 +415,30 @@ run_pipeline('868j9tryh')  # ID de uma task real para teste
     Python preset tenta detectar Flask/Django; Other trata arquivos em `api/`
     como Serverless Functions individuais. `vercel.json` NÃO deve especificar
     `runtime` — o Vercel auto-detecta pelo `requirements.txt` + `runtime.txt`.
+
+11. **Canva via Vision:** o endpoint `/designs/{id}/content` **não existe** na
+    Canva Connect API (foi tentativa/erro histórico). O fluxo correto é:
+    GET `/designs/{id}` (metadata) + POST `/exports` (PNG alta-res assíncrono
+    com polling) → download da S3 pré-assinada → passa como `type: "image"`
+    pro Claude Sonnet 4.5 com Vision. Fallback pra thumbnail 596x335 se o
+    export demorar >20s ou falhar.
+
+12. **Filtro de público no briefing:** o system prompt de `briefing.py` tem uma
+    seção FILTRO DE PÚBLICO que remove conteúdo interno do slide Canva
+    (curiosidades pro board, disclaimers operacionais, dados sensíveis) antes
+    de gerar Legenda/copy. Se aparecer vazamento, adicionar exemplo negativo
+    explícito nessa seção — não confia só em regra genérica.
+
+13. **ID visual é INEGOCIÁVEL no prompt:** o bloco "ID VISUAL BRASA — REGRAS
+    INEGOCIÁVEIS" força o Claude a usar **só** hex codes da paleta do produto
+    (vindos de `PALETA_POR_PRODUTO` em `editorial.py`), ignorando as cores
+    que aparecem no slide Canva de referência. Sem esse bloco, Vision tende
+    a "herdar" cores da imagem.
+
+14. **Local dev workflow (Windows/PS):** `secrets/.env.local` é source of truth.
+    `scripts/load_env.ps1` exporta pra sessão. `canva_client` lê sempre do
+    `.env.local` pra refresh token (não do `os.environ`) porque Canva rotaciona
+    — dois `python -c ...` seguidos sem reload do PS ainda funcionam.
 
 
 SEMPRE atualizar esse arquivo (CLAUDE.md) quando fizer uma mudança importante

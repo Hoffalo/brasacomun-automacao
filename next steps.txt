@@ -1,2 +1,0 @@
-- Setup SA do google drive -> precisamos compartilhar o shared drive com o bot
-- Criar Claude da BRASA e adicionar créditos

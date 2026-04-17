@@ -16,18 +16,19 @@ from lib.alerts import build_alerts
 
 COMUN_SPACE_ID = "90111669766"
 BRIEFING_MARKER = "<!-- briefing-gerado -->"
+COMMENT_MARKER = "🤖 BRIEFING AUTOMÁTICO"
 
 
-def run_pipeline(task_id: str):
+def run_pipeline(task_id: str, force: bool = False):
     """Entry point síncrono chamado pela thread do webhook."""
     try:
-        asyncio.run(_pipeline(task_id))
+        asyncio.run(_pipeline(task_id, force=force))
     except Exception as e:
         print(f"[pipeline] Erro na task {task_id}: {e}")
         traceback.print_exc()
 
 
-async def _pipeline(task_id: str):
+async def _pipeline(task_id: str, force: bool = False):
     print(f"[pipeline] Iniciando task {task_id}")
 
     # ── ETAPA 1: Leitura da task (rich text) ──────────────────────────────
@@ -41,10 +42,11 @@ async def _pipeline(task_id: str):
         print(f"[pipeline] Task fora do espaço Comun — ignorando")
         return
 
-    # Guard: anti-duplicata
     desc = task.get("markdown_description") or task.get("description") or ""
-    if BRIEFING_MARKER in desc:
-        print(f"[pipeline] Briefing já gerado — ignorando")
+
+    # Guard: anti-duplicata (bypass com force=True)
+    if BRIEFING_MARKER in desc and not force:
+        print(f"[pipeline] Briefing já gerado — ignorando (use force=True pra refazer)")
         return
 
     name = task.get("name", "")
@@ -109,7 +111,6 @@ async def _pipeline(task_id: str):
         alerts=alerts,
         briefing=briefing,
     )
-
     await update_task_description(task_id, new_desc)
     print(f"[pipeline] Briefing gerado com sucesso para task {task_id}")
 
@@ -173,7 +174,6 @@ def _build_output(existing_desc: str, alerts: list, briefing: str) -> str:
     """Monta a descrição final com alertas + conteúdo original + briefing."""
     parts = []
 
-    # Alertas no topo
     if alerts:
         parts.append("⚠️ ALERTAS AUTOMÁTICOS")
         parts.append("─" * 40)
@@ -181,19 +181,16 @@ def _build_output(existing_desc: str, alerts: list, briefing: str) -> str:
             parts.append(alert)
         parts.append("")
 
-    # Conteúdo original preservado
     original = (existing_desc or "").strip()
     if original:
         parts.append(original)
         parts.append("")
 
-    # Separador e briefing
     parts.append("─" * 40)
     parts.append("BRIEFING GERADO AUTOMATICAMENTE")
     parts.append("─" * 40)
     parts.append(briefing)
 
-    # Marcador anti-duplicata (invisível na UI do ClickUp)
     parts.append("")
     parts.append(BRIEFING_MARKER)
 

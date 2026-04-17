@@ -5,6 +5,14 @@ secrets/
 *.pem
 *-service-account*.json
 automacao-clickup-*.json
+client_secret_*.json
+
+# Arquivos de rascunho/temp com possíveis secrets colados
+temp.txt
+canva_token.txt
+next steps.md
+next steps.txt
+*.notes.md
 
 # Python
 __pycache__/
