@@ -26,8 +26,11 @@ Quando um analista de MKT muda o status de uma task no ClickUp para **"Em Progre
 brasa-briefing-bot/
 ├── api/
 │   └── webhook.py          ← Entry point Vercel. Recebe POST do ClickUp,
-│                             valida assinatura HMAC, responde 200 imediatamente,
-│                             dispara pipeline em thread separada.
+│                             valida assinatura HMAC, responde 200 imediatamente
+│                             (wfile.write esvazia o buffer TCP), e DEPOIS
+│                             roda run_pipeline sincronamente no mesmo processo.
+│                             Sem thread daemon — serverless mata threads quando
+│                             handler retorna. Vercel Pro dá 60s, suficiente.
 ├── lib/
 │   ├── pipeline.py         ← Orquestra as 5 etapas. Entry point síncrono
 │                             que chama asyncio.run(_pipeline()).
@@ -390,8 +393,10 @@ in-place — a próxima chamada na mesma sessão não precisa de reload.
 4. **Anti-duplicata:** sempre checar `<!-- briefing-gerado -->` antes de gerar.
    A mudança de status pode ser triggerada múltiplas vezes.
 
-5. **O webhook responde 200 antes de processar.** A pipeline roda em thread separada
-   via `threading.Thread(daemon=True)`. Isso é intencional — o ClickUp tem timeout de 3s.
+5. **O webhook responde 200 antes de processar.** `self._respond(200, "ok")` é
+   chamado primeiro (envia TCP, ClickUp recebe); DEPOIS `run_pipeline(task_id)`
+   roda sincronamente no mesmo processo. Vercel Pro (60s maxDuration) aguenta.
+   NÃO usar thread daemon — serverless mata threads quando handler retorna.
 
 6. **Paletas do manual de ID visual** estão em `lib/editorial.py` no dict
    `PALETA_POR_PRODUTO`. O cruzamento com tags da task é feito em `pipeline.py`

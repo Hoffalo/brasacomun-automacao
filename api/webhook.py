@@ -5,7 +5,6 @@ Trigger: ClickUp taskStatusUpdated → "em progresso mkt"
 
 from http.server import BaseHTTPRequestHandler
 import json
-import threading
 import hmac
 import hashlib
 import os
@@ -44,7 +43,13 @@ class handler(BaseHTTPRequestHandler):
 
             body = json.loads(body_bytes)
 
-            # 2. Responde 200 imediatamente — ClickUp tem timeout de 3s
+            # 2. Responde 200 imediatamente (ClickUp tem timeout curto).
+            # A resposta é enviada aqui; o TCP buffer é esvaziado. ClickUp
+            # considera o webhook entregue. Continuamos executando no
+            # mesmo processo — Vercel Pro dá 60s de maxDuration, suficiente
+            # pra pipeline completa (~15-20s). Não usamos thread daemon
+            # porque o runtime serverless do Vercel mata threads quando
+            # o handler retorna.
             self._respond(200, "ok")
 
             # 3. Filtra: só taskStatusUpdated → "em progresso mkt"
@@ -56,7 +61,6 @@ class handler(BaseHTTPRequestHandler):
                 if item.get("field") != "status":
                     continue
                 after = item.get("after", {})
-                # Aceita por ID ou por nome (case-insensitive)
                 if (
                     after.get("id") == TARGET_STATUS_ID
                     or after.get("status", "").lower() == TARGET_STATUS_NAME
@@ -71,13 +75,10 @@ class handler(BaseHTTPRequestHandler):
             if not task_id:
                 return
 
-            # 4. Roda a pipeline em thread separada — não bloqueia o response
-            thread = threading.Thread(
-                target=run_pipeline,
-                args=(task_id,),
-                daemon=True,
-            )
-            thread.start()
+            # 4. Roda a pipeline sincronamente no mesmo processo.
+            # ClickUp já recebeu o 200 acima, então a latência daqui não
+            # impacta o webhook. A função termina quando a pipeline termina.
+            run_pipeline(task_id)
 
         except Exception as e:
             # Nunca deixa o webhook falhar silenciosamente
