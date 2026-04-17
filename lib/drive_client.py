@@ -15,22 +15,35 @@ DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 async def search_drive(tags: list, task_name: str) -> str:
     """
     Busca documentos relevantes no Drive da BRASA.
-    Retorna string com títulos e trechos dos documentos encontrados.
+    Estratégia: Service Account primeiro; se falhar auth OU retornar vazio,
+    tenta OAuth (token do usuário, herda acesso pessoal às Shared Drives).
     """
+    keywords = _build_query(tags, task_name)
+
+    sa_token = await _get_sa_access_token()
+    if sa_token:
+        result = await _search_with_token(sa_token, keywords)
+        if result:
+            return result
+
+    oauth_token = await _get_oauth_access_token()
+    if oauth_token:
+        return await _search_with_token(oauth_token, keywords)
+
+    return ""
+
+
+async def _search_with_token(token: str, keywords: str) -> str:
     try:
-        token = await _get_access_token()
-        if not token:
-            return ""
-
-        keywords = _build_query(tags, task_name)
         query = f"fullText contains '{keywords}' and trashed = false"
-
         headers = {"Authorization": f"Bearer {token}"}
         params = {
             "q": query,
             "pageSize": 5,
             "orderBy": "modifiedTime desc",
             "fields": "files(id,name,modifiedTime,webViewLink,mimeType)",
+            "includeItemsFromAllDrives": "true",
+            "supportsAllDrives": "true",
         }
 
         async with aiohttp.ClientSession() as session:
@@ -50,7 +63,6 @@ async def search_drive(tags: list, task_name: str) -> str:
             name = f.get("name", "")
             link = f.get("webViewLink", "")
             mime = f.get("mimeType", "")
-            # Marca documentos que provavelmente não são legíveis (Slides, etc.)
             readable = "✓" if "document" in mime or "spreadsheet" in mime else "○"
             lines.append(f"{readable} [{name}]({link})")
 
@@ -61,10 +73,12 @@ async def search_drive(tags: list, task_name: str) -> str:
         return ""
 
 
-async def _get_access_token() -> str | None:
-    """
-    Obtém access token via Service Account JWT.
-    """
+async def _get_sa_access_token() -> str | None:
+    """Access token via Service Account JWT."""
+    creds_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "")
+    if not creds_json:
+        return None
+
     try:
         import time
         import base64
@@ -72,11 +86,6 @@ async def _get_access_token() -> str | None:
         from cryptography.hazmat.primitives import hashes, serialization
         from cryptography.hazmat.primitives.asymmetric import padding
         from cryptography.hazmat.backends import default_backend
-
-        creds_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "")
-        if not creds_json:
-            print("[drive] GOOGLE_SERVICE_ACCOUNT_JSON não configurado")
-            return None
 
         creds = json.loads(creds_json)
         client_email = creds["client_email"]
@@ -92,7 +101,6 @@ async def _get_access_token() -> str | None:
             "exp": now + 3600,
         }
 
-        # Codifica o JWT manualmente
         def b64url(data: bytes) -> str:
             return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
 
@@ -118,7 +126,34 @@ async def _get_access_token() -> str | None:
                 return token_data.get("access_token")
 
     except Exception as e:
-        print(f"[drive] Erro ao obter token: {e}")
+        print(f"[drive] SA token falhou: {e}")
+        return None
+
+
+async def _get_oauth_access_token() -> str | None:
+    """Access token via OAuth refresh token (conta pessoal BRASA)."""
+    client_id = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "")
+    client_secret = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", "")
+    refresh_token = os.environ.get("GOOGLE_OAUTH_REFRESH_TOKEN", "")
+
+    if not (client_id and client_secret and refresh_token):
+        return None
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "refresh_token": refresh_token,
+                    "grant_type": "refresh_token",
+                },
+            ) as resp:
+                data = await resp.json()
+                return data.get("access_token")
+    except Exception as e:
+        print(f"[drive] OAuth token falhou: {e}")
         return None
 
 

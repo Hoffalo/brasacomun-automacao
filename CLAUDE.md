@@ -36,7 +36,11 @@ brasa-briefing-bot/
 │                             rich text com links embutidos preservados.
 │   ├── slack_client.py     ← Busca mensagens relevantes (allowlist de canais)
 │                             + lookup de cargo dos assignees via bio do Slack.
-│   ├── drive_client.py     ← Busca Google Drive via Service Account JWT.
+│   ├── drive_client.py     ← Busca Google Drive. Service Account (JWT) como
+│                             autenticação primária; se SA não tiver token ou
+│                             retornar 0 resultados, cai em OAuth refresh token
+│                             (conta pessoal BRASA) como fallback. Inclui
+│                             includeItemsFromAllDrives pra buscar em Shared Drives.
 │   ├── canva_client.py     ← Extrai design_id de URL Canva no markdown_description
 │                             e lê o conteúdo do slide referenciado.
 │   ├── briefing.py         ← Chama Claude API com prompt completo.
@@ -45,8 +49,15 @@ brasa-briefing-bot/
 │   ├── editorial.py        ← Linha editorial, prefixos, paletas por produto
 │                             (Manual de ID Visual BRASA, seção 1.3).
 │   └── alerts.py           ← Gera alertas automáticos (data, tags, campos).
+├── scripts/
+│   └── get_refresh_token.py ← Script local one-shot. Abre browser, usuário
+│                              loga com conta BRASA, imprime refresh_token
+│                              pra colar no Vercel como GOOGLE_OAUTH_REFRESH_TOKEN.
+├── secrets/                ← Pasta local ignorada pelo git (chaves SA, OAuth JSON).
 ├── requirements.txt        ← aiohttp, anthropic, cryptography
-├── vercel.json             ← maxDuration: 60s, runtime: python3.12
+├── vercel.json             ← maxDuration: 60s (runtime auto-detectado)
+├── runtime.txt             ← python-3.12
+├── .gitignore              ← Ignora secrets/, .env, .vercel/, __pycache__/, etc.
 └── README.md               ← Instruções de setup
 ```
 
@@ -84,14 +95,22 @@ ALLOWED_CHANNELS = {
 ## Variáveis de ambiente necessárias
 
 ```bash
-CLICKUP_API_TOKEN           # pk_... (ClickUp Settings → Apps)
-CLICKUP_WEBHOOK_SECRET      # Gerado ao criar o webhook no ClickUp
-SLACK_TOKEN                 # xoxp-... (token pessoal, fase 1)
-                            # xoxb-... (bot dedicado, fase 2)
-GOOGLE_SERVICE_ACCOUNT_JSON # JSON minificado da Service Account
-ANTHROPIC_API_KEY           # sk-ant-...
-CANVA_API_TOKEN             # Token da integração Canva
+CLICKUP_API_TOKEN             # pk_... (ClickUp Settings → Apps)
+CLICKUP_WEBHOOK_SECRET        # Gerado ao criar o webhook no ClickUp
+SLACK_TOKEN                   # xoxp-... (token pessoal, fase 1)
+                              # xoxb-... (bot dedicado, fase 2)
+GOOGLE_SERVICE_ACCOUNT_JSON   # JSON minificado da Service Account (primário)
+GOOGLE_OAUTH_CLIENT_ID        # OAuth Client ID (Desktop app) — fallback
+GOOGLE_OAUTH_CLIENT_SECRET    # OAuth Client Secret                — fallback
+GOOGLE_OAUTH_REFRESH_TOKEN    # Gerado por scripts/get_refresh_token.py — fallback
+ANTHROPIC_API_KEY             # sk-ant-...
+CANVA_API_TOKEN               # Token da integração Canva
 ```
+
+As três envs `GOOGLE_OAUTH_*` são opcionais. Se as três estiverem preenchidas,
+o bot usa o token OAuth como fallback quando a Service Account não consegue
+autenticar ou retorna 0 resultados (típico quando a SA não foi adicionada
+como membro das Shared Drives da BRASA).
 
 ---
 
@@ -259,6 +278,7 @@ Tasks             (901109622288) — tasks gerais sem lista específica
 | Slack: só vê canais do usuário autenticado | `SLACK_TOKEN` = token pessoal | Bot dedicado (`xoxb-`) com `channels:history` em todos os canais Comun |
 | ClickUp MCP não retorna rich text | Pipeline usa REST API direta com `include_markdown_description=true` | — (já resolvido) |
 | Canva: links só visíveis no rich text | `canva_client.py` extrai via regex do `markdown_description` | Campo "Arte" (URL) nas listas para alternativa estruturada |
+| Drive: SA não tem acesso às Shared Drives da BRASA (só Manager adiciona membro) | Fallback OAuth: bot autentica como usuário BRASA via refresh token | Pedir pra COO/Dir Tech adicionar SA como Viewer nas Shared Drives relevantes |
 | Drive: Slides/Sheets não são legíveis diretamente | Loga como "○" no contexto | Exportar como texto via Drive export endpoint |
 | Timeout Vercel: 60s plano gratuito | Pipeline paralela (~15-20s no total) | Migrar para AWS Lambda (15min) se necessário |
 
@@ -285,6 +305,10 @@ pip install -r requirements.txt
 export CLICKUP_API_TOKEN="pk_..."
 export SLACK_TOKEN="xoxp-..."
 export GOOGLE_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}'
+# Opcional: OAuth fallback quando SA não tem acesso às Shared Drives
+export GOOGLE_OAUTH_CLIENT_ID="..."
+export GOOGLE_OAUTH_CLIENT_SECRET="..."
+export GOOGLE_OAUTH_REFRESH_TOKEN="..."  # gerado por scripts/get_refresh_token.py
 export ANTHROPIC_API_KEY="sk-ant-..."
 export CANVA_API_TOKEN="..."
 
@@ -321,3 +345,21 @@ run_pipeline('868j9tryh')  # ID de uma task real para teste
 7. **Formato do briefing** é definido no `SYSTEM_PROMPT` em `lib/briefing.py`.
    Legenda e Orientação Design = rascunho pronto.
    MKT, Público-alvo, Foco Emocional = direcionamentos + perguntas norteadoras.
+
+8. **Drive — SA vs OAuth:** `drive_client.py` tenta Service Account primeiro
+   (`_get_sa_access_token`). Se falhar OU retornar 0 arquivos, cai em OAuth
+   (`_get_oauth_access_token`) usando refresh token do usuário BRASA.
+   A SA só funciona em pastas/Shared Drives onde foi adicionada como membro —
+   o fallback OAuth herda acesso completo do usuário.
+
+9. **Secrets ficam em `secrets/`** (ignorado pelo git). Nunca commitar chaves
+   Service Account, OAuth client JSONs, ou tokens. O `.gitignore` cobre
+   `secrets/`, `.env*`, `*-service-account*.json`.
+
+10. **Vercel config:** Framework Preset deve ser **"Other"** (não "Python").
+    Python preset tenta detectar Flask/Django; Other trata arquivos em `api/`
+    como Serverless Functions individuais. `vercel.json` NÃO deve especificar
+    `runtime` — o Vercel auto-detecta pelo `requirements.txt` + `runtime.txt`.
+
+
+SEMPRE atualizar esse arquivo (CLAUDE.md) quando fizer uma mudança importante

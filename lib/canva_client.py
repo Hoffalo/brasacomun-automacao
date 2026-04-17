@@ -43,9 +43,9 @@ async def get_canva_context(markdown_desc: str) -> str:
     page_number = int(slide_match.group(1)) if slide_match else 1
 
     try:
-        token = os.environ.get("CANVA_API_TOKEN", "")
+        token = await _get_access_token()
         if not token:
-            print("[canva] CANVA_API_TOKEN não configurado")
+            print("[canva] Sem token (CANVA_API_TOKEN ou CANVA_REFRESH_TOKEN)")
             return ""
 
         headers = {
@@ -75,6 +75,46 @@ async def get_canva_context(markdown_desc: str) -> str:
 
     except Exception as e:
         print(f"[canva] Exceção ao ler design: {e}")
+        return ""
+
+
+async def _get_access_token() -> str:
+    """
+    Devolve um access token do Canva.
+    Preferência:
+      1. CANVA_API_TOKEN (legado / direto — bearer estático)
+      2. OAuth refresh flow: CANVA_CLIENT_ID + CANVA_CLIENT_SECRET + CANVA_REFRESH_TOKEN
+    """
+    direct = os.environ.get("CANVA_API_TOKEN", "")
+    if direct:
+        return direct
+
+    client_id = os.environ.get("CANVA_CLIENT_ID", "")
+    client_secret = os.environ.get("CANVA_CLIENT_SECRET", "")
+    refresh_token = os.environ.get("CANVA_REFRESH_TOKEN", "")
+    if not (client_id and client_secret and refresh_token):
+        return ""
+
+    try:
+        import base64
+
+        basic = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{CANVA_API_BASE}/oauth/token",
+                headers={
+                    "Authorization": f"Basic {basic}",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+                data={
+                    "grant_type": "refresh_token",
+                    "refresh_token": refresh_token,
+                },
+            ) as resp:
+                data = await resp.json()
+                return data.get("access_token", "")
+    except Exception as e:
+        print(f"[canva] Erro refresh token: {e}")
         return ""
 
 

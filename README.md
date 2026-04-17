@@ -28,6 +28,9 @@ Em **Settings → Environment Variables**, adicione:
 | `CLICKUP_WEBHOOK_SECRET` | Gerado no passo 3 abaixo |
 | `SLACK_TOKEN` | Slack → perfil → Preferências → (ou token OAuth pessoal `xoxp-...`) |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | Google Cloud Console → Service Accounts → JSON key (minificado) |
+| `GOOGLE_OAUTH_CLIENT_ID` | *(opcional, fallback)* OAuth Client ID — ver passo 5b |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | *(opcional, fallback)* OAuth Client Secret — ver passo 5b |
+| `GOOGLE_OAUTH_REFRESH_TOKEN` | *(opcional, fallback)* gerado via `scripts/get_refresh_token.py` |
 | `ANTHROPIC_API_KEY` | console.anthropic.com → API Keys (`sk-ant-...`) |
 | `CANVA_API_TOKEN` | canva.com/developers → Create Integration → Token |
 
@@ -55,7 +58,7 @@ api.slack.com/apps → Create App → OAuth & Permissions → xoxp-...
 **Fase 2:** substituir por bot dedicado (`xoxb-...`) com escopos:
 `channels:history`, `groups:history`, `users:read`, `search:read`
 
-### 5. Google Drive Service Account (~15 min)
+### 5a. Google Drive — Service Account (~15 min, via primário)
 
 ```
 1. console.cloud.google.com → New Project → Enable Drive API
@@ -64,6 +67,34 @@ api.slack.com/apps → Create App → OAuth & Permissions → xoxp-...
 4. Minifique o JSON: python3 -c "import json,sys; print(json.dumps(json.load(open('key.json'))))"
 5. Cole o resultado em GOOGLE_SERVICE_ACCOUNT_JSON
 ```
+
+### 5b. Google Drive — OAuth fallback (opcional, ~10 min)
+
+Use quando não der pra compartilhar as Shared Drives com a Service Account
+(ex: você não é Manager). O bot autentica como você e herda seu acesso.
+
+```
+1. Google Cloud Console (mesmo projeto da SA):
+   - APIs & Services → OAuth consent screen → configurar (External ou Internal)
+     Scope: .../auth/drive.readonly. Test users: seu email BRASA
+   - APIs & Services → Credentials → Create → OAuth client ID
+     Application type: Desktop app → Create → baixar JSON
+
+2. Rodar script local uma vez:
+   export GOOGLE_OAUTH_CLIENT_ID="..."
+   export GOOGLE_OAUTH_CLIENT_SECRET="..."
+   python scripts/get_refresh_token.py
+   → abre browser, você loga com a conta BRASA
+   → refresh_token aparece no terminal
+
+3. Colar no Vercel (Environment Variables):
+   - GOOGLE_OAUTH_CLIENT_ID
+   - GOOGLE_OAUTH_CLIENT_SECRET
+   - GOOGLE_OAUTH_REFRESH_TOKEN
+```
+
+O bot usa SA primeiro; se SA falhar autenticação ou retornar zero resultados,
+cai no OAuth automaticamente.
 
 ### 6. Canva API Token (~5 min)
 
@@ -85,11 +116,13 @@ brasa-briefing-bot/
 │   ├── pipeline.py         ← Orquestra as 5 etapas
 │   ├── clickup.py          ← REST API ClickUp (rich text)
 │   ├── slack_client.py     ← Busca Slack + cargos dos assignees
-│   ├── drive_client.py     ← Busca Google Drive
+│   ├── drive_client.py     ← Busca Google Drive (SA + OAuth fallback)
 │   ├── canva_client.py     ← Lê slides do Canva via link na descrição
 │   ├── briefing.py         ← Claude API — gera o briefing
 │   ├── editorial.py        ← Linha editorial + prefixos + paletas
 │   └── alerts.py           ← Alertas automáticos
+├── scripts/
+│   └── get_refresh_token.py ← One-shot: gera GOOGLE_OAUTH_REFRESH_TOKEN
 ├── requirements.txt
 └── vercel.json
 ```

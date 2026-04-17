@@ -1,0 +1,29 @@
+# Secrets & credentials
+secrets/
+.env
+.env.*
+*.pem
+*-service-account*.json
+automacao-clickup-*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.mypy_cache/
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# Vercel
+.vercel/
+vercel.json.bak
+
+# IDE / tooling
+.claude/
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
