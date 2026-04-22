@@ -125,13 +125,14 @@ async def _pipeline(task_id: str, force: bool = False):
 
 
 def _format_comments(comments: list) -> str:
-    """Formata lista de comentários do ClickUp para texto legível pelo Claude."""
+    """Formata lista de comentários do ClickUp para texto legível pelo Claude.
+    Prefere markdown_description (rich text com links) sobre comment_text (plain)."""
     if not comments:
         return ""
     lines = []
     for c in comments[:20]:  # máx 20 comentários
         user = c.get("user", {}).get("username") or c.get("user", {}).get("email", "?")
-        text = c.get("comment_text", "").strip()
+        text = (c.get("markdown_description") or c.get("comment_text", "")).strip()
         if text:
             lines.append(f"[{user}]: {text}")
     return "\n".join(lines)

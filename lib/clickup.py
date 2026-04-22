@@ -84,11 +84,12 @@ async def post_task_comment(task_id: str, comment: str) -> bool:
 
 
 async def get_task_comments(task_id: str) -> list:
-    """Lista comentários da task. Usado pra checar anti-duplicata."""
+    """Lista comentários da task com rich text (markdown_description=true)."""
     url = f"{CLICKUP_API_BASE}/task/{task_id}/comment"
+    params = {"include_markdown_description": "true"}
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=_headers()) as resp:
+            async with session.get(url, params=params, headers=_headers()) as resp:
                 if resp.status != 200:
                     return []
                 data = await resp.json()
