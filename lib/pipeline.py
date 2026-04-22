@@ -6,7 +6,7 @@ Etapas: leitura → validação → contexto (paralelo) → geração → output
 import asyncio
 import traceback
 
-from lib.clickup import get_task_rich, update_task_description
+from lib.clickup import get_task_rich, update_task_description, get_task_comments
 from lib.slack_client import search_slack, get_assignee_roles
 from lib.drive_client import search_drive
 from lib.canva_client import get_canva_context
@@ -81,12 +81,14 @@ async def _pipeline(task_id: str, force: bool = False):
 
     # ── ETAPA 3: Coleta de contexto em paralelo ───────────────────────────
     keywords = " ".join(tags) + " " + name
-    slack_ctx, drive_ctx, canva_ctx, related_tasks = await asyncio.gather(
+    slack_ctx, drive_ctx, canva_ctx, related_tasks, raw_comments = await asyncio.gather(
         search_slack(tags, name),
         search_drive(tags, name),
         get_canva_context(desc),        # extrai design_id do markdown_description
         _get_related_tasks(tags, task_id),
+        get_task_comments(task_id),
     )
+    comments_ctx = _format_comments(raw_comments)
 
     # ── ETAPA 4: Geração do briefing via Claude API ───────────────────────
     briefing = await generate_briefing(
@@ -102,6 +104,7 @@ async def _pipeline(task_id: str, force: bool = False):
         drive_ctx=drive_ctx,
         canva_ctx=canva_ctx,
         related_tasks=related_tasks,
+        comments_ctx=comments_ctx,
         paleta=paleta,
         alerts=alerts,
     )
@@ -119,6 +122,19 @@ async def _pipeline(task_id: str, force: bool = False):
         print(f"[pipeline] Fallback escrito — próximo trigger fará retry (sem marcador)")
     else:
         print(f"[pipeline] Briefing gerado com sucesso para task {task_id}")
+
+
+def _format_comments(comments: list) -> str:
+    """Formata lista de comentários do ClickUp para texto legível pelo Claude."""
+    if not comments:
+        return ""
+    lines = []
+    for c in comments[:20]:  # máx 20 comentários
+        user = c.get("user", {}).get("username") or c.get("user", {}).get("email", "?")
+        text = c.get("comment_text", "").strip()
+        if text:
+            lines.append(f"[{user}]: {text}")
+    return "\n".join(lines)
 
 
 def _get_paleta(tags: list, list_name: str) -> str:

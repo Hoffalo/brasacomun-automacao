@@ -176,6 +176,8 @@ falhar. Pra alto volume, considerar Upstash Redis ou equivalente.
    → get_canva_context(markdown_desc) → exporta slide em PNG e retorna
        {text, image_base64, image_media_type} pro Vision
    → _get_related_tasks(tags, task_id) → tasks com mesmas tags
+   → get_task_comments(task_id) → comentários da task (máx 20),
+       formatados como "[user]: texto" pelo _format_comments em pipeline.py
 
    ETAPA 4 — Geração via Claude API
    → claude-sonnet-4-5, max_tokens=1800
@@ -444,6 +446,18 @@ in-place — a próxima chamada na mesma sessão não precisa de reload.
     `scripts/load_env.ps1` exporta pra sessão. `canva_client` lê sempre do
     `.env.local` pra refresh token (não do `os.environ`) porque Canva rotaciona
     — dois `python -c ...` seguidos sem reload do PS ainda funcionam.
+
+15. **Comentários da task como contexto:** `get_task_comments(task_id)` é chamado
+    na Etapa 3 junto com Slack/Drive/Canva (sem custo de latência extra).
+    `_format_comments` em `pipeline.py` serializa os comentários como
+    `[user]: texto` (máx 20). Entram no user prompt de `briefing.py` no bloco
+    "COMENTÁRIOS DA TASK". `get_task_comments` em `clickup.py` existe apenas
+    para esse fim — não é usado para anti-duplicata (que usa o marcador HTML
+    `<!-- briefing-gerado -->` na descrição).
+
+16. **Logs no Vercel:** setar `PYTHONUNBUFFERED=1` nas env vars do Vercel é
+    obrigatório — sem isso, o stdout do Python é bufferizado e os `print()`
+    da pipeline somem antes do processo terminar.
 
 
 SEMPRE atualizar esse arquivo (CLAUDE.md) quando fizer uma mudança importante

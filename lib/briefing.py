@@ -110,6 +110,7 @@ async def generate_briefing(
     drive_ctx: str,
     canva_ctx,  # dict { text, image_base64, image_media_type } ou str (retrocompat)
     related_tasks: str,
+    comments_ctx: str,
     paleta: str,
     alerts: list,
 ) -> str:
@@ -159,6 +160,9 @@ CONTEXTO DO GOOGLE DRIVE (documentos relacionados):
 
 CONTEXTO DO CANVA (conteúdo do slide referenciado):
 {canva_text or '(nenhum encontrado)'}
+
+COMENTÁRIOS DA TASK (histórico de discussões):
+{comments_ctx or '(nenhum)'}
 
 TASKS RELACIONADAS (mesmas tags, últimos 3 meses):
 {related_tasks or '(nenhuma)'}
@@ -213,9 +217,9 @@ Os demais campos são direcionamentos + perguntas norteadoras."""
 
 def _fallback_briefing(task_name: str, alerts: list) -> str:
     """Retorna mensagem de erro amigável se a Claude API falhar."""
+    alerts_str = "\n".join(f"- {a}" for a in alerts) if alerts else "Sem alertas detectados."
     return (
         f"⚠ Não foi possível gerar o briefing automaticamente para '{task_name}'.\n"
         f"Verifique os logs do servidor ou tente novamente mudando o status.\n\n"
-        f"Alertas detectados:\n" + "\n".join(f"- {a}" for a in alerts)
-        if alerts else "Sem alertas detectados."
+        f"Alertas detectados:\n{alerts_str}"
     )
