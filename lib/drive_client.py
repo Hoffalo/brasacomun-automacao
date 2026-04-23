@@ -15,31 +15,41 @@ DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 async def search_drive(tags: list, task_name: str) -> str:
     """
     Busca documentos relevantes no Drive da BRASA.
+    Sempre inclui o Manual de Comunicação no topo dos resultados.
     Estratégia: Service Account primeiro; se falhar auth OU retornar vazio,
     tenta OAuth (token do usuário, herda acesso pessoal às Shared Drives).
     """
+    import asyncio
+
     keywords = _build_query(tags, task_name)
 
-    sa_token = await _get_sa_access_token()
-    if sa_token:
-        result = await _search_with_token(sa_token, keywords)
-        if result:
-            return result
+    token = await _get_sa_access_token()
+    if not token:
+        token = await _get_oauth_access_token()
+    if not token:
+        return ""
 
-    oauth_token = await _get_oauth_access_token()
-    if oauth_token:
-        return await _search_with_token(oauth_token, keywords)
+    # Busca o manual de comunicação e os docs da task em paralelo
+    manual_result, task_result = await asyncio.gather(
+        _search_with_token(token, "manual de comunicação BRASA", max_results=1),
+        _search_with_token(token, keywords, max_results=4),
+    )
 
-    return ""
+    parts = []
+    if manual_result:
+        parts.append("📘 MANUAL DE COMUNICAÇÃO:\n" + manual_result)
+    if task_result:
+        parts.append("📁 DOCUMENTOS RELACIONADOS:\n" + task_result)
+    return "\n\n".join(parts)
 
 
-async def _search_with_token(token: str, keywords: str) -> str:
+async def _search_with_token(token: str, keywords: str, max_results: int = 4) -> str:
     try:
         query = f"fullText contains '{keywords}' and trashed = false"
         headers = {"Authorization": f"Bearer {token}"}
         params = {
             "q": query,
-            "pageSize": 5,
+            "pageSize": max_results + 1,
             "orderBy": "modifiedTime desc",
             "fields": "files(id,name,modifiedTime,webViewLink,mimeType)",
             "includeItemsFromAllDrives": "true",
@@ -59,7 +69,7 @@ async def _search_with_token(token: str, keywords: str) -> str:
             return ""
 
         lines = []
-        for f in files[:4]:
+        for f in files[:max_results]:
             name = f.get("name", "")
             link = f.get("webViewLink", "")
             mime = f.get("mimeType", "")
