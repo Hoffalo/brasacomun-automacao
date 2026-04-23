@@ -137,12 +137,21 @@ INCLUA só:
 - Títulos, CTAs e informações factuais do evento/campanha/tema
 - Dados públicos já divulgados ou claramente pensados pra divulgação
 
-TIKTOK E REELS — REGRA SOBRE TRENDS:
-Nunca sugira trends específicas, áudios virais, brainrot ou formatos do momento.
-Você não tem acesso ao que está em alta agora e uma sugestão errada afasta a Gen Z.
-Se o conteúdo for TikTok ou Reels, inclua este placeholder na Orientação MKT:
-  "[TREND — verificar com o time o que tá em alta essa semana]"
-O restante do briefing deve funcionar com ou sem o uso de uma trend.
+PESQUISA NA INTERNET — QUANDO USAR:
+Você tem acesso a uma ferramenta de busca. Use-a em dois casos:
+
+1. PROATIVO — quando a task mencionar "trend" ou "brainrot" em qualquer campo:
+   busque o que está em alta no TikTok/Instagram brasileiro agora
+   (ex: "TikTok trends Brasil [mês atual]"). Inclua o resultado na Orientação MKT.
+
+2. ÚLTIMO RECURSO — quando, após analisar todo o contexto interno (Slack, Drive,
+   Canva, comentários, tasks relacionadas), o nome ou tema da task ainda não fizer
+   sentido. Por exemplo, referências culturais, memes ou termos desconhecidos que
+   não aparecem em nenhuma fonte interna.
+   Prefira sempre o contexto interno antes de buscar.
+
+Se mesmo após buscar o tema ainda não estiver claro, sinalize com "(não identificado)"
+e gere o briefing com o que tiver.
 """
 
 
@@ -240,28 +249,60 @@ Os demais campos são direcionamentos + perguntas norteadoras."""
             })
         message_content.append({"type": "text", "text": user_prompt})
 
+        if _needs_trend_search(task_name, tags, existing_desc):
+            print(f"[briefing] Web search proativo (trend/brainrot detectado)")
+
         payload = {
             "model": MODEL,
             "max_tokens": MAX_TOKENS,
             "system": SYSTEM_PROMPT,
-            "messages": [{"role": "user", "content": message_content}],
+            "tools": [{"type": "web_search_20250305", "name": "web_search"}],
         }
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                ANTHROPIC_API_URL, json=payload, headers=headers
-            ) as resp:
-                if resp.status != 200:
-                    body = await resp.text()
-                    print(f"[briefing] Erro na Claude API: {resp.status} — {body[:200]}")
-                    return _fallback_briefing(task_name, alerts)
-                data = await resp.json()
+        messages = [{"role": "user", "content": message_content}]
 
-        return data["content"][0]["text"]
+        async with aiohttp.ClientSession() as session:
+            # Loop para suportar tool use (web search pode exigir múltiplas rodadas)
+            for _ in range(5):  # máx 5 iterações para evitar loop infinito
+                async with session.post(
+                    ANTHROPIC_API_URL,
+                    json={**payload, "messages": messages},
+                    headers=headers,
+                ) as resp:
+                    if resp.status != 200:
+                        body = await resp.text()
+                        print(f"[briefing] Erro na Claude API: {resp.status} — {body[:200]}")
+                        return _fallback_briefing(task_name, alerts)
+                    data = await resp.json()
+
+                content = data.get("content", [])
+                stop_reason = data.get("stop_reason")
+
+                if stop_reason != "tool_use":
+                    # end_turn ou outro: extrai todos os blocos de texto
+                    texts = [b["text"] for b in content if b.get("type") == "text"]
+                    return "\n".join(texts) if texts else _fallback_briefing(task_name, alerts)
+
+                # Claude quer usar uma tool: adiciona turno do assistente e
+                # retorna tool_result vazio (Anthropic executa o web search)
+                messages.append({"role": "assistant", "content": content})
+                tool_results = [
+                    {"type": "tool_result", "tool_use_id": b["id"], "content": ""}
+                    for b in content if b.get("type") == "tool_use"
+                ]
+                messages.append({"role": "user", "content": tool_results})
+
+        print(f"[briefing] Loop de tool use excedeu 5 iterações")
+        return _fallback_briefing(task_name, alerts)
 
     except Exception as e:
         print(f"[briefing] Exceção ao gerar briefing: {e}")
         return _fallback_briefing(task_name, alerts)
+
+
+def _needs_trend_search(task_name: str, tags: list, desc: str) -> bool:
+    haystack = f"{task_name} {' '.join(tags)} {desc}".lower()
+    return any(kw in haystack for kw in ["trend", "brainrot"])
 
 
 def _fallback_briefing(task_name: str, alerts: list) -> str:
