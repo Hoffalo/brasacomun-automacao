@@ -43,13 +43,15 @@ FOCO EMOCIONAL
 GLOSSÁRIO BRASA — consulte antes de interpretar qualquer sigla ou termo:
 
 Produtos:
-- BeC / BEC → BRASA em Casa (conferência no Brasil, NÃO "Ensina Conference")
+- BeC / BEC → BRASA em Casa (conferência no Brasil)
 - Pdb / PDB → Programa de Bolsas
-- Passaporte → Passaporte BRASA (programa de intercâmbio)
+- BRASA Blacks → PdB para pessoas negras e pardas
+- Passaporte → Passaporte BRASA (conferência online)
 - OnCycle → Ciclo de campanha de recrutamento
 - BL → BRASA Local
-- Summit AM → Summit Americas
-- Summit EU / Summit IN → Summit Innovation (conferência internacional)
+- Summit AM → BRASA Summit Américas
+- Summit EU → BRASA Summit Europa
+- Summit IN → BRASA Summit Innovation (conferência internacional)
 
 Times:
 - Comun → Comunicação
@@ -100,7 +102,7 @@ CORES:
 
 TIPOGRAFIA:
 - Lato é a fonte oficial. Todo texto que contém a palavra "BRASA" é em Lato.
-- Hagrid Extrabold só em títulos de impacto (máx 3-4 palavras), nunca com "BRASA".
+- Hagrid Extrabold só em títulos de impacto (máx 3-4 palavras).
 - Não sugira outras fontes.
 
 LOGO:
@@ -134,6 +136,13 @@ INCLUA só:
 - Mensagem principal do slide dirigida ao público externo
 - Títulos, CTAs e informações factuais do evento/campanha/tema
 - Dados públicos já divulgados ou claramente pensados pra divulgação
+
+TIKTOK E REELS — REGRA SOBRE TRENDS:
+Nunca sugira trends específicas, áudios virais, brainrot ou formatos do momento.
+Você não tem acesso ao que está em alta agora e uma sugestão errada afasta a Gen Z.
+Se o conteúdo for TikTok ou Reels, inclua este placeholder na Orientação MKT:
+  "[TREND — verificar com o time o que tá em alta essa semana]"
+O restante do briefing deve funcionar com ou sem o uso de uma trend.
 """
 
 
