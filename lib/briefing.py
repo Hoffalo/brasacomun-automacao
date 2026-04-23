@@ -40,6 +40,45 @@ PÚBLICO-ALVO
 FOCO EMOCIONAL
 (1 direcionamento central + 1 pergunta norteadora. Máx 2 linhas.)
 
+GLOSSÁRIO BRASA — consulte antes de interpretar qualquer sigla ou termo:
+
+Produtos:
+- BeC / BEC → BRASA em Casa (conferência no Brasil, NÃO "Ensina Conference")
+- Pdb / PDB → Programa de Bolsas
+- Passaporte → Passaporte BRASA (programa de intercâmbio)
+- OnCycle → Ciclo de campanha de recrutamento
+- BL → BRASA Local
+- Summit AM → Summit Americas
+- Summit EU / Summit IN → Summit Innovation (conferência internacional)
+
+Times:
+- Comun → Comunicação
+- Conf → Conferência
+- GG / G&G → Gente & Gestão
+- T&D → Treinamento e Desenvolvimento
+- Corp → Relações Corporativas
+- Dev → Desenvolvimento
+- HRBP → Human Resources Business Partner (consultora interna de G&G)
+- PM → Partnership Manager
+- SDR → Sales Development Representative
+
+Iniciativas:
+- NEXT → Mentoria personalizada do T&D (pareia membros a profissionais de mercado)
+- Impulsiona → Ferramenta oficial de feedback mensal da BRASA
+- PE → Período Experimental
+- PS → Processo Seletivo
+- BRASA Day → Reunião de integração interna com o Board
+
+Termos gerais:
+- OKRs → Objectives and Key Results (metodologia de metas)
+- DRI → Directly Responsible Individual
+- NPS → Net Promoter Score (pesquisa de satisfação)
+- PDI → Plano de Desenvolvimento Individual
+- SOW → Statement of Work
+- RSD → Reunião Semanal de Diretorias
+- APGs → Avaliações de Performance Gerais
+- GCal → Google Calendar
+
 REGRAS ABSOLUTAS:
 - Nunca gere copy finalizado — a Legenda é um rascunho a ser revisado
 - Nunca inclua links de Figma ou artes finalizadas
