@@ -183,13 +183,15 @@ falhar. Pra alto volume, considerar Upstash Redis ou equivalente.
    → claude-sonnet-4-5, max_tokens=1800
    → Se houver image_base64, anexa como bloco Vision (content: [image, text])
    → System prompt aplica filtro de público (remove conteúdo interno, board,
-     dados sensíveis) e instrui briefing ENXUTO — analista revisa antes de publicar
-   → Legenda: rascunho pronto para revisão (único campo "completo")
-   → Orientação Design: 1-2 linhas, paleta pelo NOME do produto (sem hex codes),
-     versão da logo. Sem descrever slide a slide
-   → Orientação MKT: 1 direcionamento + 1 pergunta (máx 2 linhas)
-   → Público-alvo: 1 linha (persona principal)
-   → Foco Emocional: 1 linha (sentimento central)
+     dados sensíveis) e exige bullets ESTRATÉGICOS com substância — nada
+     genérico. Analista revisa antes de publicar
+   → Legenda: rascunho pronto completo (único campo "longo")
+   → Orientação Design: 2-3 bullets. Paleta pelo NOME do produto (sem hex codes),
+     versão da logo, hierarquia visual. Só decisões que o designer precisa tomar
+   → Orientação MKT: 2-3 bullets — direção, ângulo narrativo, gancho; perguntas
+     norteadoras quando depender de decisão do analista
+   → Público-alvo: 2 bullets — persona principal + contexto (funil, ciclo, etc.)
+   → Foco Emocional: 2 bullets — sentimento central + "por quê" (gatilho na peça)
 
    ETAPA 5 — Output
    → Alertas no topo
@@ -405,10 +407,12 @@ in-place — a próxima chamada na mesma sessão não precisa de reload.
    na função `_get_paleta()`.
 
 7. **Formato do briefing** é definido no `SYSTEM_PROMPT` em `lib/briefing.py`.
-   Filosofia ENXUTA — analista sempre revisa, então não encher de informação extra:
+   Filosofia: bullets ESTRATÉGICOS com substância, não exaustivos.
+   Analista sempre revisa, então cada bullet precisa agregar decisão/insight real
+   (nada genérico como "engajar o público"):
    - Legenda = único campo que é rascunho completo
-   - Orientação Design = 1-2 linhas, paleta pelo nome do produto (sem hex codes)
-   - Orientação MKT / Público-alvo / Foco Emocional = 1-2 linhas cada.
+   - Orientação Design / MKT / Público-alvo / Foco Emocional = 2-3 bullets cada,
+     com paleta pelo NOME do produto (sem hex codes).
 
 8. **Drive — SA vs OAuth:** `drive_client.py` tenta Service Account primeiro
    (`_get_sa_access_token`). Se falhar OU retornar 0 arquivos, cai em OAuth

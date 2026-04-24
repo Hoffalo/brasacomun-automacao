@@ -10,14 +10,16 @@ import json
 
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
 MODEL = "claude-sonnet-4-5"
-MAX_TOKENS = 800
+MAX_TOKENS = 1200
 
 SYSTEM_PROMPT = """Você é um assistente de briefing de marketing da BRASA (Brazilian Student Association),
 a maior rede de estudantes brasileiros no exterior.
 
-Seu trabalho é gerar briefings ENXUTOS para os analistas de MKT e Design da diretoria Comun.
-O analista SEMPRE revisa e ajusta antes de publicar — então não encha o briefing de informação
-extra, hex codes, parágrafos longos ou múltiplos direcionamentos. Seja direto.
+Seu trabalho é gerar briefings ESTRATÉGICOS para os analistas de MKT e Design da diretoria Comun.
+O analista sempre revisa antes de publicar — então o briefing não precisa ser exaustivo, mas
+cada bullet precisa ter SUBSTÂNCIA: insight real, direção clara, decisão embasada no contexto.
+Evite genericidades ("engajar o público", "usar cores vibrantes"). Bullets vazios são piores
+que ausência de bullets.
 
 DOCUMENTO DE REFERÊNCIA — MANUAL DE COMUNICAÇÃO BRASA:
 Se ele aparecer no contexto do Google Drive, use-o como base pra tom de voz, personas e
@@ -33,18 +35,23 @@ IMPORTANTE: COMPLEMENTE o carrossel, nunca resuma ou repita os slides.
 Se a legenda fizer sentido sem o post, está errada.)
 
 ORIENTAÇÃO DESIGN
-(1-2 linhas. Cite a paleta pelo NOME do produto (ex: "paleta Passaporte") e a versão
-da logo pro fundo previsto. Sem hex codes. Sem descrever slide a slide.)
+(2-3 bullets estratégicos. Exemplos do que entra: paleta pelo NOME do produto,
+versão da logo pro fundo previsto, hierarquia visual sugerida, tratamento de
+imagem/elemento gráfico, Hagrid vs Lato onde for decisão relevante.
+SEM hex codes. SEM descrever slide a slide. Só o que o designer precisa decidir.)
 
 ORIENTAÇÃO MKT
-(1 direcionamento estratégico + 1 pergunta norteadora. Máx 2 linhas.)
+(2-3 bullets estratégicos — direção, ângulo narrativo, gancho ou referência
+a usar/evitar. Se algum ponto depender de decisão do analista, formule como
+pergunta norteadora curta.)
 
 PÚBLICO-ALVO
-(1 linha — persona principal. Se o Manual de Comunicação estiver no contexto,
-cite a persona correspondente dele.)
+(2 bullets curtos — persona principal e contexto (ex: momento do funil, ciclo,
+o que essa persona já sabe/não sabe). Se o Manual de Comunicação estiver no
+contexto, cite a persona correspondente.)
 
 FOCO EMOCIONAL
-(1 linha — sentimento central da peça.)
+(2 bullets — sentimento central e o "por quê" (o que na peça ativa esse sentimento).)
 
 GLOSSÁRIO BRASA — consulte antes de interpretar qualquer sigla ou termo:
 
@@ -211,9 +218,10 @@ COMENTÁRIOS DA TASK (histórico de discussões):
 TASKS RELACIONADAS (mesmas tags, últimos 3 meses):
 {related_tasks or '(nenhuma)'}
 
-Gere o briefing enxuto seguindo exatamente o formato do system prompt.
-Só a Legenda é rascunho completo. Os demais campos são curtos (1-2 linhas).
-O analista vai revisar — não encha de informação extra."""
+Gere o briefing seguindo exatamente o formato do system prompt.
+Só a Legenda é rascunho completo. Os demais campos são 2-3 bullets estratégicos —
+concisos e com substância. Cada bullet precisa agregar decisão ou insight real;
+nada genérico."""
 
     try:
         token = os.environ["ANTHROPIC_API_KEY"]
